@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const aes = @import("./aes.zig");
+const base85 = @import("./base85.zig");
 const zlib = @import("./zlib.zig");
 
 const BASE_KEY = [_]u8{
@@ -72,6 +73,10 @@ fn derive_key(buf: *[BASE_KEY.len]u8, steam_id: u64) void {
     for (0..8) |i| {
         buf[i] ^= segments[i];
     }
+}
+
+test {
+    _ = base85;
 }
 
 test "encrypt_decrypt_round_trip__no_padding" {

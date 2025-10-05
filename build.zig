@@ -40,4 +40,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Test the application.");
     const test_cmd = b.addRunArtifact(exe_tests);
     test_step.dependOn(&test_cmd.step);
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
 }
