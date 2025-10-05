@@ -8,6 +8,17 @@ Fun reference implementation of:
 - Integration ZLib <-> Zig.
 - Different options for API design (allocated vs. streaming via reader/writer).
 
+## Features
+
+- [x] Decrypting save files
+- [x] Decompressing save files
+- [ ] Deserializing YAML
+- [ ] Serializing YAML
+- [x] Loading base85 item serials
+- [x] Saving base85 item serials
+- [x] Compressing save files
+- [x] Encrypting save files
+
 ## License
 
 [MIT Open Source](./LICENSE)
