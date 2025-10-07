@@ -40,6 +40,11 @@ pub const Value = union(enum) {
     }
 };
 
+const StackValue = struct {
+    pending_key: ?[]const u8,
+    value: Value,
+};
+
 pub const Parser = struct {
     const Self = @This();
 
@@ -59,7 +64,7 @@ pub const Parser = struct {
     pub fn parse(self: *Self, allocator: std.mem.Allocator, reader: *std.io.Reader) !Value {
         c.yaml_parser_set_input(&self.parser, read_handler, @ptrCast(reader));
 
-        var stack = std.ArrayList(Value).empty;
+        var stack = std.ArrayList(StackValue).empty;
         defer stack.deinit(allocator);
 
         // TODO: I have to store the `pending_key`s in a stack
@@ -89,7 +94,8 @@ pub const Parser = struct {
             switch (event.type) {
                 c.YAML_MAPPING_START_EVENT => {
                     try stack.append(allocator, .{
-                        .mapping = std.StringHashMap(Value).init(allocator),
+                        .pending_key = null,
+                        .value = .{ .mapping = std.StringHashMap(Value).init(allocator) },
                     });
                 },
                 c.YAML_SCALAR_EVENT => {
@@ -100,13 +106,14 @@ pub const Parser = struct {
                         return value;
                     }
 
-                    switch (stack.items[stack.items.len - 1]) {
+                    var stack_head = &stack.items[stack.items.len - 1];
+                    switch (stack_head.value) {
                         .mapping => |*mapping| {
-                            if (pending_key) |key| {
+                            if (stack_head.pending_key) |key| {
                                 try mapping.put(key, value);
-                                pending_key = null;
+                                stack_head.pending_key = null;
                             } else {
-                                pending_key = value.scalar;
+                                stack_head.pending_key = value.scalar;
                             }
                         },
                         .sequence => |*sequence| {
@@ -118,23 +125,28 @@ pub const Parser = struct {
                     }
                 },
                 c.YAML_SEQUENCE_START_EVENT => {
-                    try stack.append(allocator, .{ .sequence = std.ArrayList(Value).empty });
+                    try stack.append(allocator, .{
+                        .pending_key = null,
+                        .value = .{ .sequence = std.ArrayList(Value).empty },
+                    });
                 },
                 c.YAML_MAPPING_END_EVENT | c.YAML_SEQUENCE_END_EVENT => {
                     const value = stack.pop() orelse return error.UnexpectedEndOfStream;
                     if (stack.items.len == 0) {
-                        return value;
+                        return value.value;
                     }
-                    switch (stack.items[stack.items.len - 1]) {
+
+                    const stack_head = &stack.items[stack.items.len - 1];
+                    switch (stack_head.value) {
                         .mapping => |*mapping| {
-                            if (pending_key) |key| {
-                                try mapping.put(key, value);
+                            if (stack_head.pending_key) |key| {
+                                try mapping.put(key, value.value);
                             } else {
                                 return error.MissingMappingKey;
                             }
                         },
                         .sequence => |*sequence| {
-                            try sequence.append(allocator, value);
+                            try sequence.append(allocator, value.value);
                         },
                         else => {
                             return error.InvalidYamlStack;
@@ -153,7 +165,7 @@ pub const Parser = struct {
         if (stack.items.len != 1) {
             return error.UnexpectedEndOfStream;
         }
-        return stack.items[0];
+        return stack.items[0].value;
     }
 };
 
@@ -258,4 +270,28 @@ test "parse_mapping" {
 
     const sub_value = value.mapping.get("key") orelse return error.ExpectedKey;
     try std.testing.expectEqualStrings("value", sub_value.scalar);
+}
+
+test "parse_nested_mapping" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+
+    var parser = Parser.init();
+    defer parser.deinit();
+
+    var value = blk: {
+        var reader = std.io.Reader.fixed(
+            \\key:
+            \\  subkey:
+            \\  - value1
+            \\  - value2
+        );
+        break :blk try parser.parse(allocator, &reader);
+    };
+    defer value.deinit(allocator);
+
+    const sub_mapping = (value.mapping.get("key") orelse return error.ExpectedKey).mapping;
+    const sequence = (sub_mapping.get("subkey") orelse return error.ExpectedKey).sequence;
+    try std.testing.expectEqualStrings("value1", sequence.items[0].scalar);
+    try std.testing.expectEqualStrings("value2", sequence.items[1].scalar);
 }
