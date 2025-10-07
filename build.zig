@@ -18,6 +18,7 @@ pub fn build(b: *std.Build) void {
     });
     root_module.linkSystemLibrary("crypto", .{});
     root_module.linkSystemLibrary("ssl", .{});
+    root_module.linkSystemLibrary("yaml", .{});
     root_module.linkSystemLibrary("z", .{});
 
     const exe = b.addExecutable(.{

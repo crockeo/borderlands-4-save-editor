@@ -2,6 +2,7 @@ const std = @import("std");
 
 const aes = @import("./aes.zig");
 const base85 = @import("./base85.zig");
+const yaml = @import("./yaml.zig");
 const zlib = @import("./zlib.zig");
 
 const BASE_KEY = [_]u8{
@@ -37,34 +38,14 @@ pub fn main() !void {
     };
     defer allocator.free(decompressed_contents);
 
-    const recompressed_contents = blk: {
+    var parser = yaml.Parser.init();
+    defer parser.deinit();
+    {
         var reader = std.io.Reader.fixed(decompressed_contents);
+        try parser.parse(&reader);
+    }
 
-        var output = std.io.Writer.Allocating.init(allocator);
-        errdefer output.deinit();
-
-        try zlib.compress(&reader, &output.writer, .best);
-        break :blk try output.toOwnedSlice();
-    };
-    defer allocator.free(recompressed_contents);
-
-    const redecompressed_contents = blk: {
-        var reader = std.io.Reader.fixed(recompressed_contents);
-
-        var output = std.io.Writer.Allocating.init(allocator);
-        errdefer output.deinit();
-
-        try zlib.decompress(&reader, &output.writer);
-        break :blk try output.toOwnedSlice();
-    };
-    defer allocator.free(redecompressed_contents);
-
-    const encrypted_contents = try aes_ecb.encrypt(allocator, contents);
-    defer allocator.free(encrypted_contents);
-
-    std.debug.assert(std.mem.eql(u8, decompressed_contents, redecompressed_contents));
-
-    std.debug.print("{s}\n", .{decompressed_contents});
+    // std.debug.print("{s}\n", .{decompressed_contents});
 }
 
 fn derive_key(buf: *[BASE_KEY.len]u8, steam_id: u64) void {
@@ -76,7 +57,10 @@ fn derive_key(buf: *[BASE_KEY.len]u8, steam_id: u64) void {
 }
 
 test {
+    _ = aes;
     _ = base85;
+    _ = yaml;
+    _ = zlib;
 }
 
 test "encrypt_decrypt_round_trip__no_padding" {

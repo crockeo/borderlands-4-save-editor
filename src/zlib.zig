@@ -136,3 +136,31 @@ fn decompress_chunk(stream: [*c]c.z_stream, out: *[CHUNK]u8, writer: *std.io.Wri
     }
     return ret;
 }
+
+test "compression_roundtrip" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+
+    const message = "this is a message";
+    const compressed_message = blk: {
+        var reader = std.io.Reader.fixed(message);
+
+        var output = std.io.Writer.Allocating.init(allocator);
+        errdefer output.deinit();
+
+        try compress(&reader, &output.writer, .default);
+        break :blk try output.toOwnedSlice();
+    };
+
+    const decompressed_message = blk: {
+        var reader = std.io.Reader.fixed(compressed_message);
+
+        var output = std.io.Writer.Allocating.init(allocator);
+        errdefer output.deinit();
+
+        try decompress(&reader, &output.writer);
+        break :blk try output.toOwnedSlice();
+    };
+
+    try std.testing.expectEqualStrings(message, decompressed_message);
+}
