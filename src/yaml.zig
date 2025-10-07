@@ -62,6 +62,16 @@ pub const Parser = struct {
         var stack = std.ArrayList(Value).empty;
         defer stack.deinit(allocator);
 
+        // TODO: I have to store the `pending_key`s in a stack
+        // alongside the content that's being parsed.
+        // Imagine:
+        //
+        //   key1:
+        //     key2:
+        //     - value1
+        //     - value2
+        //
+        // We're going to lose the reference to `key1` at the top.
         var event: c.yaml_event_t = undefined;
         var pending_key: ?[]const u8 = null;
         defer {
