@@ -40,10 +40,12 @@ pub fn main() !void {
 
     var parser = yaml.Parser.init();
     defer parser.deinit();
-    {
+
+    var value = blk: {
         var reader = std.io.Reader.fixed(decompressed_contents);
-        try parser.parse(&reader);
-    }
+        break :blk try parser.parse(allocator, &reader);
+    };
+    defer value.deinit(allocator);
 
     // std.debug.print("{s}\n", .{decompressed_contents});
 }
