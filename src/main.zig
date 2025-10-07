@@ -38,16 +38,25 @@ pub fn main() !void {
     };
     defer allocator.free(decompressed_contents);
 
-    var parser = yaml.Parser.init();
-    defer parser.deinit();
-
     var value = blk: {
+        var parser = yaml.Parser.init();
+        defer parser.deinit();
         var reader = std.io.Reader.fixed(decompressed_contents);
         break :blk try parser.parse(allocator, &reader);
     };
     defer value.deinit(allocator);
 
-    // std.debug.print("{s}\n", .{decompressed_contents});
+    const emitted_value = blk: {
+        var emitter = yaml.Emitter.init();
+        defer emitter.deinit();
+        var writer = std.io.Writer.Allocating.init(allocator);
+        errdefer writer.deinit();
+        try emitter.emit(&writer.writer, value);
+        break :blk try writer.toOwnedSlice();
+    };
+    defer allocator.free(emitted_value);
+
+    std.debug.print("{s}\n", .{emitted_value});
 }
 
 fn derive_key(buf: *[BASE_KEY.len]u8, steam_id: u64) void {

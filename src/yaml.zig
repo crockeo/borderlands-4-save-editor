@@ -155,6 +155,45 @@ fn read_handler(ctx: ?*anyopaque, buffer: [*c]u8, size: usize, length: [*c]usize
     return 1;
 }
 
+pub const Emitter = struct {
+    const Self = @This();
+
+    emitter: c.yaml_emitter_t,
+
+    pub fn init() Self {
+        var self = Self{ .emitter = undefined };
+        _ = c.yaml_emitter_initialize(&self.emitter);
+        return self;
+    }
+
+    pub fn deinit(self: *Self) void {
+        c.yaml_emitter_delete(&self.emitter);
+    }
+
+    pub fn emit(self: *Self, writer: *std.io.Writer, value: Value) !void {
+        c.yaml_emitter_set_output(&self.emitter, write_handler, @ptrCast(writer));
+
+        var event: c.yaml_event_t = undefined;
+        _ = c.yaml_stream_start_event_initialize(&event, c.YAML_UTF8_ENCODING);
+        _ = c.yaml_emitter_emit(&self.emitter, &event);
+
+        // TODO: walk values and emit them here
+
+        _ = c.yaml_stream_end_event_initialize(&event);
+        _ = c.yaml_emitter_emit(&self.emitter, &event);
+
+        _ = value;
+    }
+};
+
+fn write_handler(ctx: ?*anyopaque, buffer: [*c]u8, size: usize) callconv(.c) c_int {
+    var writer: *std.io.Writer = @ptrCast(@alignCast(ctx));
+    writer.writeAll(buffer[0..size]) catch {
+        return 0;
+    };
+    return 1;
+}
+
 test "parse_scalar" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
