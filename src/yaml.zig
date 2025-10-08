@@ -68,13 +68,6 @@ pub const Parser = struct {
         defer stack.deinit(allocator);
 
         var event: c.yaml_event_t = undefined;
-        var pending_key: ?[]const u8 = null;
-        defer {
-            if (pending_key) |key| {
-                allocator.free(key);
-            }
-        }
-
         while (true) {
             if (c.yaml_parser_parse(&self.parser, &event) == 0) {
                 return error.OhMeOhMy;
@@ -120,8 +113,11 @@ pub const Parser = struct {
                         .value = .{ .sequence = std.ArrayList(Value).empty },
                     });
                 },
-                c.YAML_MAPPING_END_EVENT | c.YAML_SEQUENCE_END_EVENT => {
+                c.YAML_MAPPING_END_EVENT, c.YAML_SEQUENCE_END_EVENT => {
                     const value = stack.pop() orelse return error.UnexpectedEndOfStream;
+                    if (value.pending_key != null) {
+                        return error.ExtraPendingKey;
+                    }
                     if (stack.items.len == 0) {
                         return value.value;
                     }
@@ -131,6 +127,7 @@ pub const Parser = struct {
                         .mapping => |*mapping| {
                             if (stack_head.pending_key) |key| {
                                 try mapping.put(key, value.value);
+                                stack_head.pending_key = null;
                             } else {
                                 return error.MissingMappingKey;
                             }
@@ -142,8 +139,6 @@ pub const Parser = struct {
                             return error.InvalidYamlStack;
                         },
                     }
-
-                    pending_key = null;
                 },
                 c.YAML_STREAM_END_EVENT => {
                     break;
@@ -258,8 +253,7 @@ test "parse_mapping" {
     };
     defer value.deinit(allocator);
 
-    const sub_value = value.mapping.get("key") orelse return error.ExpectedKey;
-    try std.testing.expectEqualStrings("value", sub_value.scalar);
+    try std.testing.expectEqualStrings("value", value.mapping.get("key").?.scalar);
 }
 
 test "parse_nested_mapping" {
@@ -271,17 +265,59 @@ test "parse_nested_mapping" {
 
     var value = blk: {
         var reader = std.io.Reader.fixed(
-            \\key:
-            \\  subkey:
-            \\  - value1
-            \\  - value2
+            \\key1:
+            \\  subkey1: "value1"
+            \\key2:
+            \\  subkey2: "value2"
         );
         break :blk try parser.parse(allocator, &reader);
     };
     defer value.deinit(allocator);
 
-    const sub_mapping = (value.mapping.get("key") orelse return error.ExpectedKey).mapping;
-    const sequence = (sub_mapping.get("subkey") orelse return error.ExpectedKey).sequence;
-    try std.testing.expectEqualStrings("value1", sequence.items[0].scalar);
-    try std.testing.expectEqualStrings("value2", sequence.items[1].scalar);
+    const value1 = value.mapping.get("key1").?.mapping.get("subkey1").?.scalar;
+    const value2 = value.mapping.get("key2").?.mapping.get("subkey2").?.scalar;
+    try std.testing.expectEqualStrings("value1", value1);
+    try std.testing.expectEqualStrings("value2", value2);
+}
+
+test "parse_sequence_of_mappings" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+
+    var parser = Parser.init();
+    defer parser.deinit();
+
+    var value = blk: {
+        var reader = std.io.Reader.fixed(
+            \\parent:
+            \\- subkey: value1
+            \\- subkey: value2
+            \\another_key: another_value
+        );
+        break :blk try parser.parse(allocator, &reader);
+    };
+    defer value.deinit(allocator);
+
+    try std.testing.expectEqualStrings(
+        "value1",
+        (value
+            .mapping.get("parent").?
+            .sequence.items[0]
+            .mapping.get("subkey").?
+            .scalar),
+    );
+    try std.testing.expectEqualStrings(
+        "value2",
+        (value
+            .mapping.get("parent").?
+            .sequence.items[1]
+            .mapping.get("subkey").?
+            .scalar),
+    );
+    try std.testing.expectEqualStrings(
+        "another_value",
+        (value
+            .mapping.get("another_key").?
+            .scalar),
+    );
 }
