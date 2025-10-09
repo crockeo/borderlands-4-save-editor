@@ -46,17 +46,15 @@ pub fn main() !void {
     };
     defer value.deinit(allocator);
 
-    const emitted_value = blk: {
+    {
         var emitter = yaml.Emitter.init();
         defer emitter.deinit();
-        var writer = std.io.Writer.Allocating.init(allocator);
-        errdefer writer.deinit();
-        try emitter.emit(&writer.writer, value);
-        break :blk try writer.toOwnedSlice();
-    };
-    defer allocator.free(emitted_value);
 
-    std.debug.print("{s}\n", .{emitted_value});
+        var stdout_buf: [1024]u8 = undefined;
+        var writer = std.fs.File.stdout().writer(&stdout_buf);
+        try emitter.emit(&writer.interface, value);
+        try writer.interface.flush();
+    }
 }
 
 fn derive_key(buf: *[BASE_KEY.len]u8, steam_id: u64) void {

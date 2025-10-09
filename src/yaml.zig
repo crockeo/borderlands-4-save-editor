@@ -182,12 +182,18 @@ pub const Emitter = struct {
 
         var event: c.yaml_event_t = undefined;
         _ = c.yaml_stream_start_event_initialize(&event, c.YAML_UTF8_ENCODING);
-        _ = c.yaml_emitter_emit(&self.emitter, &event);
+        try self.checked_emit(&event);
+
+        _ = c.yaml_document_start_event_initialize(&event, null, null, null, 1);
+        try self.checked_emit(&event);
 
         self.emit_impl(&event, value);
 
+        _ = c.yaml_document_end_event_initialize(&event, 1);
+        try self.checked_emit(&event);
+
         _ = c.yaml_stream_end_event_initialize(&event);
-        _ = c.yaml_emitter_emit(&self.emitter, &event);
+        try self.checked_emit(&event);
     }
 
     fn emit_impl(self: *Self, event: *c.yaml_event_t, value: Value) void {
@@ -233,13 +239,28 @@ pub const Emitter = struct {
             .null_value => {},
         }
     }
+
+    fn checked_emit(self: *Self, event: *c.yaml_event_t) !void {
+        if (c.yaml_emitter_emit(&self.emitter, event) == 0) {
+            return error.YamlStreamError;
+        }
+    }
 };
 
 fn write_handler(ctx: ?*anyopaque, buffer: [*c]u8, size: usize) callconv(.c) c_int {
     var writer: *std.io.Writer = @ptrCast(@alignCast(ctx));
-    writer.writeAll(buffer[0..size]) catch {
-        return 0;
-    };
+    var index: usize = 0;
+    while (true) {
+        const bytes_written = writer.write(buffer[index..size]) catch {
+            return 0;
+        };
+        if (bytes_written == 0) {
+            // If we can't write anymore bytes,
+            // we just let libyaml flush the rest of its contents.
+            return 1;
+        }
+        index += bytes_written;
+    }
     return 1;
 }
 
