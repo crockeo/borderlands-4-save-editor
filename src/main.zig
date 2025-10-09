@@ -38,8 +38,6 @@ pub fn main() !void {
     };
     defer allocator.free(decompressed_contents);
 
-    std.debug.print("{s}\n", .{decompressed_contents});
-
     var value = blk: {
         var parser = yaml.Parser.init();
         defer parser.deinit();

@@ -184,12 +184,54 @@ pub const Emitter = struct {
         _ = c.yaml_stream_start_event_initialize(&event, c.YAML_UTF8_ENCODING);
         _ = c.yaml_emitter_emit(&self.emitter, &event);
 
-        // TODO: walk values and emit them here
+        self.emit_impl(&event, value);
 
         _ = c.yaml_stream_end_event_initialize(&event);
         _ = c.yaml_emitter_emit(&self.emitter, &event);
+    }
 
-        _ = value;
+    fn emit_impl(self: *Self, event: *c.yaml_event_t, value: Value) void {
+        switch (value) {
+            .mapping => |mapping| {
+                _ = c.yaml_mapping_start_event_initialize(event, null, null, 1, c.YAML_ANY_MAPPING_STYLE);
+                _ = c.yaml_emitter_emit(&self.emitter, event);
+
+                var iter = mapping.iterator();
+                while (iter.next()) |pair| {
+                    _ = c.yaml_scalar_event_initialize(
+                        event,
+                        null,
+                        null,
+                        pair.key_ptr.ptr,
+                        @intCast(pair.key_ptr.len),
+                        1,
+                        1,
+                        c.YAML_ANY_SCALAR_STYLE,
+                    );
+                    _ = c.yaml_emitter_emit(&self.emitter, event);
+                    self.emit_impl(event, pair.value_ptr.*);
+                }
+
+                _ = c.yaml_mapping_end_event_initialize(event);
+                _ = c.yaml_emitter_emit(&self.emitter, event);
+            },
+            .scalar => |scalar| {
+                _ = c.yaml_scalar_event_initialize(event, null, null, scalar.ptr, @intCast(scalar.len), 1, 1, c.YAML_ANY_SCALAR_STYLE);
+                _ = c.yaml_emitter_emit(&self.emitter, event);
+            },
+            .sequence => |sequence| {
+                _ = c.yaml_sequence_start_event_initialize(event, null, null, 1, c.YAML_ANY_SEQUENCE_STYLE);
+                _ = c.yaml_emitter_emit(&self.emitter, event);
+
+                for (sequence.items) |sequence_value| {
+                    self.emit_impl(event, sequence_value);
+                }
+
+                _ = c.yaml_sequence_end_event_initialize(event);
+                _ = c.yaml_emitter_emit(&self.emitter, event);
+            },
+            .null_value => {},
+        }
     }
 };
 
