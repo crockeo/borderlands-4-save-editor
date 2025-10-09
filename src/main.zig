@@ -2,8 +2,17 @@ const std = @import("std");
 
 const aes = @import("./aes.zig");
 const base85 = @import("./base85.zig");
+const bitpack = @import("./bitpack.zig");
 const yaml = @import("./yaml.zig");
 const zlib = @import("./zlib.zig");
+
+// See if I need to anything special with padding:
+//
+// From mi5hmash at https://fearlessrevolution.com/viewtopic.php?p=423888&sid=fe45d064352f93da1eade5a3bb791cda#p423888
+//
+// > Borderlands 4 Save Files are in YAML format.
+// > First, they are compressed using zlib, followed by an Adler32 checksum of the uncompressed file and the length of the uncompressed file in bytes.
+// > After that, PKCS7 padding is added, and the compressed file is encrypted with AES-ECB using the key below, xor'ed with the SteamID or EpicID to make it unique for each user:
 
 const BASE_KEY = [_]u8{
     0x35, 0xEC, 0x33, 0x77, 0xF3, 0x5D, 0xB0, 0xEA,
@@ -46,15 +55,34 @@ pub fn main() !void {
     };
     defer value.deinit(allocator);
 
-    {
-        var emitter = yaml.Emitter.init();
-        defer emitter.deinit();
-
-        var stdout_buf: [1024]u8 = undefined;
-        var writer = std.fs.File.stdout().writer(&stdout_buf);
-        try emitter.emit(&writer.interface, value);
-        try writer.interface.flush();
+    const backpack = (value
+        .mapping.get("state").?
+        .mapping.get("inventory").?
+        .mapping.get("items").?
+        .mapping.get("backpack").?
+        .mapping);
+    var iter = backpack.iterator();
+    while (iter.next()) |pair| {
+        const serial = pair.value_ptr.mapping.get("serial").?.scalar;
+        var serial_no_prefix = serial;
+        if (serial_no_prefix.len >= 3 and std.mem.eql(u8, "@Ug", serial_no_prefix[0..3])) {
+            serial_no_prefix = serial_no_prefix[3..];
+        }
+        const decoded_serial = try bitpack.bit_pack_decode(allocator, serial_no_prefix);
+        defer allocator.free(decoded_serial);
+        std.debug.print("{x}\n", .{decoded_serial});
     }
+
+    // TODO: enable roundtrip, when needed
+    // {
+    //     var emitter = yaml.Emitter.init();
+    //     defer emitter.deinit();
+    //
+    //     var stdout_buf: [1024]u8 = undefined;
+    //     var writer = std.fs.File.stdout().writer(&stdout_buf);
+    //     try emitter.emit(&writer.interface, value);
+    //     try writer.interface.flush();
+    // }
 }
 
 fn derive_key(buf: *[BASE_KEY.len]u8, steam_id: u64) void {
@@ -68,6 +96,7 @@ fn derive_key(buf: *[BASE_KEY.len]u8, steam_id: u64) void {
 test {
     _ = aes;
     _ = base85;
+    _ = bitpack;
     _ = yaml;
     _ = zlib;
 }

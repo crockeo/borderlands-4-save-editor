@@ -13,9 +13,10 @@ Fun reference implementation of:
 - [x] Decrypting save files
 - [x] Decompressing save files
 - [x] Deserializing YAML
-- [ ] Serializing YAML
-- [x] Loading base85 item serials
-- [x] Saving base85 item serials
+- [x] Serializing YAML
+- [x] Loading serial bitpacks
+- [ ] Interpreting / editing serials
+- [ ] Saving serial bitpacks
 - [x] Compressing save files
 - [x] Encrypting save files
 
