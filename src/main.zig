@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const aes = @import("./aes.zig");
-const base85 = @import("./base85.zig");
 const bitpack = @import("./bitpack.zig");
 const yaml = @import("./yaml.zig");
 const zlib = @import("./zlib.zig");
@@ -70,7 +69,6 @@ pub fn main() !void {
         }
         const decoded_serial = try bitpack.bit_pack_decode(allocator, serial_no_prefix);
         defer allocator.free(decoded_serial);
-        std.debug.print("{x}\n", .{decoded_serial});
     }
 
     // TODO: enable roundtrip, when needed
@@ -95,7 +93,6 @@ fn derive_key(buf: *[BASE_KEY.len]u8, steam_id: u64) void {
 
 test {
     _ = aes;
-    _ = base85;
     _ = bitpack;
     _ = yaml;
     _ = zlib;
